@@ -55,7 +55,7 @@ def extract_text_from_pdf(uploaded_file):
         text = ""
 
         for page in pdf_reader.pages:
-            text += page.extract_text()
+            text += page.extract_text() or ""
 
         return text
 
@@ -73,7 +73,8 @@ def clean_text(text):
 # ---------------- REMOVE STOPWORDS ----------------
 def remove_stopwords(text):
     stop_words = set(stopwords.words("english"))
-    words = word_tokenize(text)
+
+    words = text.split()   # ✅ FIXED LINE
 
     filtered_words = [word for word in words if word not in stop_words]
 
