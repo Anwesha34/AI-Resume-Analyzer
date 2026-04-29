@@ -9,6 +9,10 @@ from nltk.corpus import stopwords
 from nltk.tokenize import word_tokenize
 from chatbot import get_ai_suggestions
 
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
 # ---------------- DOWNLOAD NLTK ----------------
 nltk.download("punkt")
 nltk.download("stopwords")
@@ -56,7 +60,6 @@ def extract_text_from_pdf(uploaded_file):
 
         for page in pdf_reader.pages:
             text += page.extract_text() or ""
-
         return text
 
     except Exception as e:
@@ -98,6 +101,29 @@ def calculate_similarity(resume_text, job_description):
     )[0][0] * 100
 
     return round(score, 2)
+
+def create_pdf(report_text):
+    buffer = BytesIO()
+
+    pdf = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    y = height - 50
+
+    # Write each line
+    for line in report_text.split("\n"):
+        pdf.drawString(50, y, line)
+        y -= 20
+
+        # New page if space ends
+        if y < 50:
+            pdf.showPage()
+            y = height - 50
+
+    pdf.save()
+    buffer.seek(0)
+
+    return buffer
 
 # ---------------- MAIN APP ----------------
 def main():
@@ -200,11 +226,14 @@ def main():
             """, unsafe_allow_html=True)
 
             # ---------------- DOWNLOAD ----------------
+                       # ---------------- DOWNLOAD ----------------
+            pdf_file = create_pdf(ai_report)
+
             st.download_button(
-                label="📥 Download Report",
-                data=ai_report,
-                file_name="resume_report.txt",
-                mime="text/plain"
+                label="📥 Download Report (PDF)",
+                data=pdf_file,
+                file_name="resume_report.pdf",
+                mime="application/pdf"
             )
 
 # ---------------- RUN APP ----------------
