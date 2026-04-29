@@ -30,6 +30,7 @@ Give suggestions in:
 3. Formatting
 4. Stronger Wording
 5. Job Readiness
+6. Specific Suggestions for Improvement
 """
     )
 
