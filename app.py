@@ -1,7 +1,7 @@
 import streamlit as st
 
 from graph.pipeline import run_pipeline
-from ui.dashboard import render_dashboard, render_insights, verdict_for_score
+from ui.dashboard import render_dashboard, render_hero, render_insights
 
 
 st.set_page_config(
@@ -42,18 +42,10 @@ def main():
         st.error(state["error"])
         return
 
-    score = state.get("overall_score", 0.0)
-    summary = state.get("summary", "")
-
-    st.subheader("Hiring Fit")
-    st.metric("Overall Score", f"{score:.2f}%")
-    st.write(f"Verdict: {verdict_for_score(score)}")
-
-    summary_lines = [line.strip() for line in summary.splitlines() if line.strip()]
-    for line in summary_lines[:2]:
-        st.write(f"- {line}")
-
+    render_hero(state)
+    st.markdown("---")
     render_dashboard(state)
+    st.markdown("---")
     render_insights(state)
 
 
