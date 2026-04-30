@@ -2,10 +2,9 @@ streamlit
 matplotlib
 pandas
 numpy
-matplotlib
-scikit-learn
 PyPDF2
-nltk
 langchain
 langchain-groq
 reportlab
+sentence-transformers
+pydantic

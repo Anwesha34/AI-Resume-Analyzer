@@ -1,43 +1,79 @@
 import os
-import streamlit as st
-from langchain_groq import ChatGroq
-from langchain_core.prompts import PromptTemplate
+from typing import List
+
 from dotenv import load_dotenv
+from langchain_core.output_parsers import PydanticOutputParser
+from langchain_core.prompts import PromptTemplate
+from langchain_groq import ChatGroq
+from pydantic import BaseModel, Field
 
 load_dotenv()
 
-# API KEY
-api = os.environ["GROQ_API_KEY"] 
+api = os.environ["GROQ_API_KEY"]
 
-# LLM Model
 llm = ChatGroq(
-    api_key = api,
-    model_name="llama-3.1-8b-instant" # "llama-3.3-70b-versatile"
+    api_key=api,
+    model_name="llama-3.1-8b-instant"
 )
 
-# Function used in app.py
-def get_ai_suggestions(text):
+
+class ResumeSuggestions(BaseModel):
+    missing_skills: List[str] = Field(default_factory=list)
+    improvements: List[str] = Field(default_factory=list)
+    summary: str = ""
+
+
+def get_ai_suggestions(resume_text, job_description=""):
+    parser = PydanticOutputParser(pydantic_object=ResumeSuggestions)
 
     prompt = PromptTemplate(
-        input_variables=["resume"],
+        input_variables=["resume", "job_description"],
+        partial_variables={"format_instructions": parser.get_format_instructions()},
         template="""
-Analyze this resume and give professional improvement suggestions.
+You are an experienced technical recruiter and resume reviewer.
+
+Compare the resume against the job description. Give practical, specific feedback.
+Focus on missing skills, measurable improvements, ATS wording, and role alignment.
+Do not invent experience that is not present in the resume.
 
 Resume:
 {resume}
 
-Give suggestions in:
-1. Skills Missing
-2. ATS Optimization
-3. Formatting
-4. Stronger Wording
-5. Job Readiness
-Specific Suggestions for this resume:
+Job description:
+{job_description}
+
+{format_instructions}
 """
     )
 
-    final_prompt = prompt.format(resume=text)
+    response = llm.invoke(
+        prompt.format(
+            resume=resume_text,
+            job_description=job_description or "No job description provided."
+        )
+    )
 
-    response = llm.invoke(final_prompt)
+    try:
+        return parser.parse(response.content)
+    except Exception:
+        return ResumeSuggestions(
+            improvements=[
+                "Review the resume for clearer role alignment, stronger action verbs, and measurable project outcomes."
+            ],
+            summary=response.content.strip()
+        )
 
-    return response.content
+
+def format_ai_suggestions(suggestions):
+    missing_skills = "\n".join(f"- {skill}" for skill in suggestions.missing_skills)
+    improvements = "\n".join(f"- {item}" for item in suggestions.improvements)
+
+    return f"""Summary
+{suggestions.summary}
+
+Missing Skills
+{missing_skills or "- No major missing skills identified."}
+
+Improvements
+{improvements or "- No major improvements identified."}
+"""

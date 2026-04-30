@@ -1,21 +1,15 @@
-import streamlit as st
-import matplotlib.pyplot as plt
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import PyPDF2
 import re
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-from chatbot import get_ai_suggestions
-
 from io import BytesIO
+
+import matplotlib.pyplot as plt
+import PyPDF2
+import streamlit as st
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from sentence_transformers import SentenceTransformer, util
 
-# ---------------- DOWNLOAD NLTK ----------------
-nltk.download("punkt")
-nltk.download("stopwords")
+from chatbot import format_ai_suggestions, get_ai_suggestions
+
 
 # ---------------- PAGE SETUP ----------------
 st.set_page_config(
@@ -29,7 +23,7 @@ st.title("📄 AI Resume Job Match Analyzer")
 st.markdown("""
 Upload your resume (PDF) and paste a job description to check how well your resume matches.
 
-This tool uses **TF-IDF + Cosine Similarity + AI Suggestions**
+This tool uses **Semantic Embeddings + AI Suggestions**
 """)
 
 # ---------------- SIDEBAR ----------------
@@ -52,6 +46,7 @@ This tool helps you:
 4. View Score + Suggestions
 """)
 
+
 # ---------------- PDF TEXT EXTRACT ----------------
 def extract_text_from_pdf(uploaded_file):
     try:
@@ -66,41 +61,58 @@ def extract_text_from_pdf(uploaded_file):
         st.error(f"Error reading PDF: {e}")
         return ""
 
+
 # ---------------- CLEAN TEXT ----------------
 def clean_text(text):
-    text = text.lower()
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
+    return re.sub(r"\s+", " ", text.lower()).strip()
 
-# ---------------- REMOVE STOPWORDS ----------------
-def remove_stopwords(text):
-    stop_words = set(stopwords.words("english"))
 
-    words = text.split()   # ✅ FIXED LINE
+@st.cache_resource
+def load_embedding_model():
+    return SentenceTransformer("all-MiniLM-L6-v2")
 
-    filtered_words = [word for word in words if word not in stop_words]
 
-    return " ".join(filtered_words)
+def split_resume_chunks(resume_text):
+    raw_chunks = re.split(r"\n\s*\n|\n", resume_text)
+    chunks = []
+    current_chunk = []
+    current_length = 0
+
+    for raw_chunk in raw_chunks:
+        chunk = clean_text(raw_chunk)
+        if not chunk:
+            continue
+
+        current_chunk.append(chunk)
+        current_length += len(chunk)
+
+        if current_length >= 180:
+            chunks.append(" ".join(current_chunk))
+            current_chunk = []
+            current_length = 0
+
+    if current_chunk:
+        chunks.append(" ".join(current_chunk))
+
+    return chunks or [clean_text(resume_text)]
+
 
 # ---------------- MATCH SCORE ----------------
 def calculate_similarity(resume_text, job_description):
+    resume_chunks = split_resume_chunks(resume_text)
+    job_text = clean_text(job_description)
 
-    resume_processed = remove_stopwords(clean_text(resume_text))
-    job_processed = remove_stopwords(clean_text(job_description))
+    if not job_text or not resume_chunks:
+        return 0.0
 
-    vectorizer = TfidfVectorizer()
+    model = load_embedding_model()
+    resume_embeddings = model.encode(resume_chunks, convert_to_tensor=True)
+    job_embedding = model.encode(job_text, convert_to_tensor=True)
+    chunk_scores = util.cos_sim(resume_embeddings, job_embedding).flatten()
+    average_score = chunk_scores.mean().item() * 100
 
-    tfidf_matrix = vectorizer.fit_transform(
-        [resume_processed, job_processed]
-    )
+    return round(max(0, min(average_score, 100)), 2)
 
-    score = cosine_similarity(
-        tfidf_matrix[0:1],
-        tfidf_matrix[1:2]
-    )[0][0] * 100
-
-    return round(score, 2)
 
 def create_pdf(report_text):
     buffer = BytesIO()
@@ -124,6 +136,7 @@ def create_pdf(report_text):
     buffer.seek(0)
 
     return buffer
+
 
 # ---------------- MAIN APP ----------------
 def main():
@@ -210,7 +223,8 @@ def main():
             st.subheader("🤖 AI Generated Analysis Report")
 
             with st.spinner("Generating Suggestions..."):
-                ai_report = get_ai_suggestions(resume_text)
+                ai_suggestions = get_ai_suggestions(resume_text, job_description)
+                ai_report = format_ai_suggestions(ai_suggestions)
 
             st.markdown(f"""
             <div style="
@@ -220,13 +234,13 @@ def main():
                 border-radius:12px;
                 line-height:1.8;
                 font-size:16px;
+                white-space:pre-wrap;
             ">
             {ai_report}
             </div>
             """, unsafe_allow_html=True)
 
             # ---------------- DOWNLOAD ----------------
-                       # ---------------- DOWNLOAD ----------------
             pdf_file = create_pdf(ai_report)
 
             st.download_button(
@@ -235,6 +249,7 @@ def main():
                 file_name="resume_report.pdf",
                 mime="application/pdf"
             )
+
 
 # ---------------- RUN APP ----------------
 if __name__ == "__main__":
