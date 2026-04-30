@@ -1,241 +1,107 @@
 import streamlit as st
-import matplotlib.pyplot as plt
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
-import PyPDF2
-import re
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-from chatbot import get_ai_suggestions
 
-from io import BytesIO
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
+from graph.pipeline import run_pipeline
+from ui.dashboard import render_dashboard, render_hero, render_insights
 
-# ---------------- DOWNLOAD NLTK ----------------
-nltk.download("punkt")
-nltk.download("stopwords")
 
-# ---------------- PAGE SETUP ----------------
 st.set_page_config(
-    page_title="AI Resume Analyzer",
-    page_icon="📄",
-    layout="wide"
+    page_title="AI Hiring Intelligence Platform",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="collapsed",
 )
 
-# ---------------- HEADER ----------------
-st.title("📄 AI Resume Job Match Analyzer")
-st.markdown("""
-Upload your resume (PDF) and paste a job description to check how well your resume matches.
+# Custom styling for premium feel
+st.markdown(
+    """
+    <style>
+    [data-testid="stMetricValue"] {
+        font-size: 2.5rem;
+        font-weight: 700;
+    }
+    [data-testid="stMetricLabel"] {
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: #6c757d;
+    }
+    .css-18ni7ap { padding-top: 2rem; }
+    .css-1d391kg { padding: 2rem 1rem; }
+    h1, h2, h3 { margin-top: 1.5rem; margin-bottom: 0.75rem; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
-This tool uses **TF-IDF + Cosine Similarity + AI Suggestions**
-""")
 
-# ---------------- SIDEBAR ----------------
-with st.sidebar:
-    st.header("About")
-    st.info("""
-This tool helps you:
-
-✅ Match your resume with job description  
-✅ Get resume score  
-✅ AI suggestions to improve resume  
-✅ Download final report
-""")
-
-    st.header("How It Works")
-    st.write("""
-1. Upload Resume PDF  
-2. Paste Job Description  
-3. Click Analyze  
-4. View Score + Suggestions
-""")
-
-# ---------------- PDF TEXT EXTRACT ----------------
-def extract_text_from_pdf(uploaded_file):
-    try:
-        pdf_reader = PyPDF2.PdfReader(uploaded_file)
-        text = ""
-
-        for page in pdf_reader.pages:
-            text += page.extract_text() or ""
-        return text
-
-    except Exception as e:
-        st.error(f"Error reading PDF: {e}")
-        return ""
-
-# ---------------- CLEAN TEXT ----------------
-def clean_text(text):
-    text = text.lower()
-    text = re.sub(r'[^a-zA-Z\s]', '', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
-
-# ---------------- REMOVE STOPWORDS ----------------
-def remove_stopwords(text):
-    stop_words = set(stopwords.words("english"))
-
-    words = text.split()   # ✅ FIXED LINE
-
-    filtered_words = [word for word in words if word not in stop_words]
-
-    return " ".join(filtered_words)
-
-# ---------------- MATCH SCORE ----------------
-def calculate_similarity(resume_text, job_description):
-
-    resume_processed = remove_stopwords(clean_text(resume_text))
-    job_processed = remove_stopwords(clean_text(job_description))
-
-    vectorizer = TfidfVectorizer()
-
-    tfidf_matrix = vectorizer.fit_transform(
-        [resume_processed, job_processed]
-    )
-
-    score = cosine_similarity(
-        tfidf_matrix[0:1],
-        tfidf_matrix[1:2]
-    )[0][0] * 100
-
-    return round(score, 2)
-
-def create_pdf(report_text):
-    buffer = BytesIO()
-
-    pdf = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
-
-    y = height - 50
-
-    # Write each line
-    for line in report_text.split("\n"):
-        pdf.drawString(50, y, line)
-        y -= 20
-
-        # New page if space ends
-        if y < 50:
-            pdf.showPage()
-            y = height - 50
-
-    pdf.save()
-    buffer.seek(0)
-
-    return buffer
-
-# ---------------- MAIN APP ----------------
 def main():
+    # Header section
+    st.markdown("## 🤖 AI Hiring Intelligence Platform")
+    st.markdown("*Fast, accurate resume analysis with evidence-backed scoring*")
+    st.markdown("")
 
-    uploaded_file = st.file_uploader(
-        "Upload Your Resume (PDF)",
-        type=["pdf"]
+    # Input section in clean container
+    with st.container():
+        col1, col2 = st.columns([1, 1], gap="medium")
+
+        with col1:
+            st.markdown("**Resume**")
+            resume_file = st.file_uploader("Upload PDF", type=["pdf"], label_visibility="collapsed")
+
+        with col2:
+            st.markdown("**Job Description**")
+            jd_text = st.text_area("Paste JD", height=160, label_visibility="collapsed")
+
+    st.markdown("")
+    analyze_button = st.button("🚀 Analyze Candidate", use_container_width=True, type="primary")
+
+    if not analyze_button:
+        return
+
+    if not resume_file:
+        st.error("📄 Please upload a resume PDF")
+        return
+
+    if not jd_text:
+        st.error("📝 Please paste a job description")
+        return
+
+    # Analysis phase
+    with st.spinner("⚙️ Running AI analysis..."):
+        state = run_pipeline(resume_file, jd_text)
+
+    if state.get("error"):
+        st.error(f"Error: {state['error']}")
+        return
+
+    st.markdown("")
+    st.markdown("---")
+    st.markdown("")
+
+    # Results section
+    render_hero(state)
+
+    st.markdown("")
+    st.markdown("---")
+    st.markdown("")
+
+    render_dashboard(state)
+
+    st.markdown("")
+    st.markdown("---")
+    st.markdown("")
+
+    render_insights(state)
+
+    st.markdown("")
+    st.markdown("---")
+    st.markdown("")
+    st.markdown(
+        "<div style='text-align: center; color: #95a5a6; font-size: 0.9rem; padding: 1rem;'>"
+        "✨ Powered by LangGraph & AI Intelligence"
+        "</div>",
+        unsafe_allow_html=True,
     )
 
-    job_description = st.text_area(
-        "Paste Job Description",
-        height=220
-    )
 
-    if st.button("Analyze Match"):
-
-        if not uploaded_file:
-            st.warning("Please upload your resume.")
-            return
-
-        if not job_description:
-            st.warning("Please paste job description.")
-            return
-
-        with st.spinner("Analyzing Resume..."):
-
-            # Extract Resume Text
-            resume_text = extract_text_from_pdf(uploaded_file)
-
-            if not resume_text:
-                st.error("Could not read resume.")
-                return
-
-            # Calculate Match Score
-            similarity_score = calculate_similarity(
-                resume_text,
-                job_description
-            )
-
-            # ---------------- RESULT ----------------
-            st.subheader("📊 Match Results")
-
-            st.metric(
-                label="Resume Match Score",
-                value=f"{similarity_score:.2f}%"
-            )
-
-            # ---------------- BAR GRAPH ----------------
-            fig, ax = plt.subplots(figsize=(8, 0.8))
-
-            colors = ['#ff4b4b', '#ffa726', '#0f9d58']
-            color_index = min(int(similarity_score // 33), 2)
-
-            ax.barh(
-                [0],
-                [similarity_score],
-                color=colors[color_index]
-            )
-
-            ax.set_xlim(0, 100)
-            ax.set_yticks([])
-            ax.set_xlabel("Match Percentage")
-            ax.set_title("Resume Job Match Score")
-
-            st.pyplot(fig)
-
-            # ---------------- SCORE MESSAGE ----------------
-            if similarity_score < 40:
-                st.warning(
-                    "Low Match. Tailor your resume more closely."
-                )
-
-            elif similarity_score < 70:
-                st.info(
-                    "Good Match. Resume aligns fairly well."
-                )
-
-            else:
-                st.success(
-                    "Excellent Match! Strong alignment."
-                )
-
-            # ---------------- AI REPORT ----------------
-            st.subheader("🤖 AI Generated Analysis Report")
-
-            with st.spinner("Generating Suggestions..."):
-                ai_report = get_ai_suggestions(resume_text)
-
-            st.markdown(f"""
-            <div style="
-                background:#111;
-                color:white;
-                padding:20px;
-                border-radius:12px;
-                line-height:1.8;
-                font-size:16px;
-            ">
-            {ai_report}
-            </div>
-            """, unsafe_allow_html=True)
-
-            # ---------------- DOWNLOAD ----------------
-                       # ---------------- DOWNLOAD ----------------
-            pdf_file = create_pdf(ai_report)
-
-            st.download_button(
-                label="📥 Download Report (PDF)",
-                data=pdf_file,
-                file_name="resume_report.pdf",
-                mime="application/pdf"
-            )
-
-# ---------------- RUN APP ----------------
 if __name__ == "__main__":
     main()
